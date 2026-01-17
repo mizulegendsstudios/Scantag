@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OCR Extractor a CSV - Urgencia 2H</title>
+    <!-- Cargamos Tesseract.js desde un CDN -->
+    <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --success: #16a34a;
+            --bg: #f3f4f6;
+            --card: #ffffff;
+            --text: #1f2937;
+        }
+
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            max-width: 1000px;
+            width: 100%;
+            background: var(--card);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #e5e7eb;
+            padding-bottom: 10px;
+        }
+
+        .grid-layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .grid-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .panel {
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            padding: 15px;
+        }
+
+        h2 { margin-top: 0; font-size: 1.2rem; }
+
+        /* Controles de Carga */
+        .upload-area {
+            text-align: center;
+            border: 2px dashed var(--primary);
+            padding: 20px;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            background: #eff6ff;
+        }
+        
+        input[type="file"] {
+            display: none;
+        }
+
+        .btn {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+            width: 100%;
+            margin-top: 10px;
+        }
+
+        .btn:hover { background-color: #1d4ed8; }
+        .btn-success { background-color: var(--success); }
+        .btn-success:hover { background-color: #15803d; }
+
+        /* Formulario de Edición */
+        .form-group {
+            margin-bottom: 10px;
+        }
+        label {
+            display: block;
+            font-size: 0.85rem;
+            margin-bottom: 4px;
+            font-weight: 600;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            box-sizing: border-box; /* Importante para el width */
+        }
+        
+        /* Estado del OCR */
+        #status-box {
+            margin-top: 10px;
+            font-size: 0.9rem;
+            color: #4b5563;
+            background: #f9fafb;
+            padding: 10px;
+            border-radius: 4px;
+            display: none;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: #e5e7eb;
+            border-radius: 3px;
+            margin-top: 5px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: var(--primary);
+            width: 0%;
+            transition: width 0.3s;
+        }
+
+        /* Tabla de Datos */
+        .table-container {
+            margin-top: 20px;
+            overflow-x: auto;
+            max-height: 300px;
+            border: 1px solid #e5e7eb;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+        th, td {
+            padding: 8px 12px;
+            text-align: left;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        th {
+            background-color: #f9fafb;
+            position: sticky;
+            top: 0;
+        }
+        tr:nth-child(even) { background-color: #f9fafb; }
+        
+        /* Utilidades */
+        .row-actions { text-align: right; }
+        .delete-btn { color: #dc2626; cursor: pointer; font-size: 0.8rem; text-decoration: underline; border: none; background: none;}
+
+        #preview-img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 4px;
+            display: none;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>📦 Escáner de Etiquetas a Excel</h1>
+        <p>Sube una foto o PDF, extrae los datos, corrige si es necesario y exporta a CSV.</p>
+    </header>
+
+    <div class="grid-layout">
+        <!-- Panel Izquierdo: Carga y OCR -->
+        <div class="panel">
+            <h2>1. Capturar Imagen</h2>
+            
+            <label class="upload-area">
+                <input type="file" id="fileInput" accept="image/*,application/pdf">
+                📁 Click para subir o 📷 Tomar Foto
+            </label>
+            
+            <img id="preview-img" alt="Vista previa">
+            
+            <div id="status-box">
+                <div id="status-text">Iniciando motor OCR...</div>
+                <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+            </div>
+            
+            <textarea id="raw-text" style="width:100%; height:100px; margin-top:10px; font-size:12px; border:1px solid #ccc;" placeholder="Texto crudo extraído aparecerá aquí..."></textarea>
+        </div>
+
+        <!-- Panel Derecho: Edición y Guardado -->
+        <div class="panel">
+            <h2>2. Verificar y Guardar</h2>
+            <p style="font-size:0.8rem; color:#666;">El sistema intenta adivinar los campos. Por favor revísalos antes de guardar.</p>
+            
+            <div class="form-group">
+                <label>Nombre del Cliente</label>
+                <input type="text" id="inp-nombre" placeholder="Ej: Juan Pérez">
+            </div>
+            <div class="form-group">
+                <label>Dirección 1</label>
+                <input type="text" id="inp-dir1" placeholder="Calle, Número">
+            </div>
+            <div class="form-group">
+                <label>Dirección 2</label>
+                <input type="text" id="inp-dir2" placeholder="Colonia, Ciudad">
+            </div>
+            <div class="form-group">
+                <label>Teléfono</label>
+                <input type="text" id="inp-tel" placeholder="Ej: 555-1234">
+            </div>
+            <div class="form-group">
+                <label>Columna 5 (Vacía)</label>
+                <input type="text" disabled placeholder="Sin uso por ahora">
+            </div>
+
+            <button class="btn btn-success" onclick="agregarFila()">➕ Agregar a la Lista</button>
+        </div>
+    </div>
+
+    <!-- Panel Inferior: Tabla y Exportar -->
+    <div class="panel" style="margin-top: 20px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+            <h2>3. Lista de Datos (<span id="count-display">0</span>/510)</h2>
+            <button class="btn" style="width: auto; background-color: #059669;" onclick="exportarCSV()">📥 Descargar Excel/CSV</button>
+        </div>
+        
+        <div class="table-container">
+            <table id="data-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Nombre</th>
+                        <th>Dirección 1</th>
+                        <th>Dirección 2</th>
+                        <th>Teléfono</th>
+                        <th>Col 5</th>
+                        <th>Acción</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Las filas se agregan aquí -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- Variables Globales ---
+    let datosGuardados = [];
+    const MAX_ROWS = 510;
+
+    // --- Referencias DOM ---
+    const fileInput = document.getElementById('fileInput');
+    const previewImg = document.getElementById('preview-img');
+    const statusBox = document.getElementById('status-box');
+    const statusText = document.getElementById('status-text');
+    const progressFill = document.getElementById('progress-fill');
+    const rawText = document.getElementById('raw-text');
+    
+    // Inputs del formulario
+    const inpNombre = document.getElementById('inp-nombre');
+    const inpDir1 = document.getElementById('inp-dir1');
+    const inpDir2 = document.getElementById('inp-dir2');
+    const inpTel = document.getElementById('inp-tel');
+
+    // --- Manejo de Archivos y OCR ---
+    fileInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        // Mostrar preview si es imagen
+        if (file.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                previewImg.src = event.target.result;
+                previewImg.style.display = 'block';
+                procesarOCR(event.target.result);
+            };
+            reader.readAsDataURL(file);
+        } else if (file.type === 'application/pdf') {
+            // Para PDF en navegador es complejo sin librerías extra pesadas.
+            // En este entorno de "2 horas", sugerimos imprimir a imagen o usar foto.
+            // Pero Tesseract.js v5 acepta PDFs a veces.
+            previewImg.style.display = 'none';
+            alert("Nota: El soporte para PDF directo es experimental. Si falla, toma una foto de la pantalla o imprime a imagen (JPG).");
+            procesarOCR(file);
+        }
+    });
+
+    async function procesarOCR(source) {
+        statusBox.style.display = 'block';
+        statusText.innerText = "Iniciando OCR...";
+        progressFill.style.width = "0%";
+        
+        try {
+            const worker = await Tesseract.createWorker({
+                logger: m => {
+                    if (m.status === 'recognizing text') {
+                        statusText.innerText = `Reconociendo texto: ${Math.round(m.progress * 100)}%`;
+                        progressFill.style.width = `${m.progress * 100}%`;
+                    } else {
+                        statusText.innerText = m.status;
+                    }
+                }
+            });
+
+            // Cargar idioma español y inglés
+            await worker.loadLanguage('spa+eng');
+            await worker.initialize('spa+eng');
+            
+            const { data: { text } } = await worker.recognize(source);
+            
+            await worker.terminate();
+
+            rawText.value = text;
+            statusText.innerText = "¡Reconocimiento completado!";
+            statusBox.style.background = "#dcfce7"; // Verde claro
+            
+            intentarParams(text);
+
+        } catch (error) {
+            console.error(error);
+            statusText.innerText = "Error en el reconocimiento. Intente con una imagen más clara.";
+            statusBox.style.background = "#fee2e2"; // Rojo claro
+        }
+    }
+
+    // --- Lógica de Extracción de Datos (Heurística) ---
+    function intentarParams(texto) {
+        const lineas = texto.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+        
+        // Limpiar inputs anteriores
+        inpNombre.value = "";
+        inpDir1.value = "";
+        inpDir2.value = "";
+        inpTel.value = "";
+
+        if (lineas.length === 0) return;
+
+        // 1. Buscar Teléfono (Busca patrones de 10 dígitos o formatos comunes)
+        // Regex flexible para telefonos
+        const phoneRegex = /(\+\d{1,3}[- ]?)?\(?\d{3}\)?[- ]?\d{3}[- ]?\d{4,6}/;
+        
+        let telefonoEncontrado = "";
+        let indiceTelefono = -1;
+
+        lineas.forEach((linea, index) => {
+            const match = linea.match(phoneRegex);
+            if (match) {
+                telefonoEncontrado = match[0];
+                indiceTelefono = index;
+            }
+        });
+
+        if (telefonoEncontrado) {
+            inpTel.value = telefonoEncontrado;
+            // Eliminar línea del teléfono para que no ensucie la dirección
+            lineas.splice(indiceTelefono, 1);
+        }
+
+        // 2. Asignar resto de campos
+        // Asumimos:
+        // Primera línea -> Nombre
+        // Segunda línea -> Dirección 1
+        // Tercera línea -> Dirección 2
+        // Resto -> Se ignora o se concatena a Dirección 2
+
+        if (lineas.length > 0) inpNombre.value = lineas[0];
+        if (lineas.length > 1) inpDir1.value = lineas[1];
+        if (lineas.length > 2) inpDir2.value = lineas.slice(2).join(", "); // Unir resto del texto
+    }
+
+    // --- Gestión de Tabla ---
+    function agregarFila() {
+        // Validar
+        if (!inpNombre.value && !inpDir1.value) {
+            // Usar notificación suave, no alert
+            const btn = document.querySelector('.btn-success');
+            const originalText = btn.innerText;
+            btn.innerText = "⚠️ Ingresa al menos un dato";
+            btn.style.backgroundColor = "#dc2626";
+            setTimeout(() => {
+                btn.innerText = originalText;
+                btn.style.backgroundColor = "";
+            }, 2000);
+            return;
+        }
+
+        if (datosGuardados.length >= MAX_ROWS) {
+            alert("Has alcanzado el límite de 510 filas.");
+            return;
+        }
+
+        const nuevaFila = {
+            id: datosGuardados.length + 1,
+            nombre: inpNombre.value,
+            dir1: inpDir1.value,
+            dir2: inpDir2.value,
+            tel: inpTel.value,
+            col5: "" // Vacío por requerimiento
+        };
+
+        datosGuardados.push(nuevaFila);
+        renderizarTabla();
+        
+        // Limpiar inputs para el siguiente
+        inpNombre.value = "";
+        inpDir1.value = "";
+        inpDir2.value = "";
+        inpTel.value = "";
+        inpNombre.focus();
+    }
+
+    function eliminarFila(index) {
+        datosGuardados.splice(index, 1);
+        // Re-indexar
+        datosGuardados.forEach((d, i) => d.id = i + 1);
+        renderizarTabla();
+    }
+
+    function renderizarTabla() {
+        const tbody = document.querySelector('#data-table tbody');
+        tbody.innerHTML = "";
+        document.getElementById('count-display').innerText = datosGuardados.length;
+
+        datosGuardados.forEach((fila, index) => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${fila.id}</td>
+                <td>${fila.nombre}</td>
+                <td>${fila.dir1}</td>
+                <td>${fila.dir2}</td>
+                <td>${fila.tel}</td>
+                <td>${fila.col5}</td>
+                <td class="row-actions"><button class="delete-btn" onclick="eliminarFila(${index})">Eliminar</button></td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    // --- Exportar a CSV ---
+    function exportarCSV() {
+        if (datosGuardados.length === 0) {
+            alert("No hay datos para exportar.");
+            return;
+        }
+
+        // Encabezados
+        let csvContent = "data:text/csv;charset=utf-8,\uFEFF"; // \uFEFF es el BOM para que Excel abra bien los acentos
+        csvContent += "Nombre,Direccion1,Direccion2,Telefono,Columna5\n";
+
+        // Filas
+        datosGuardados.forEach(row => {
+            // Escapar comas en el texto para que no rompa el CSV
+            const clean = (text) => `"${String(text).replace(/"/g, '""')}"`;
+            
+            let rowStr = `${clean(row.nombre)},${clean(row.dir1)},${clean(row.dir2)},${clean(row.tel)},${clean(row.col5)}`;
+            csvContent += rowStr + "\n";
+        });
+
+        // Crear link de descarga
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        
+        // Nombre de archivo con fecha
+        const date = new Date().toISOString().slice(0,10);
+        link.setAttribute("download", `Datos_Clientes_${date}.csv`);
+        
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+</script>
+
+</body>
+</html>
